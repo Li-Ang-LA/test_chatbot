@@ -1,3 +1,9 @@
+---
+name: implement-issue
+description: Implement a GitHub issue following project conventions
+argument-hint: "[issue-number]"
+---
+
 Implement GitHub issue #$ARGUMENTS.
 
 ## Workflow
