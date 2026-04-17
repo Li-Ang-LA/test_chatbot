@@ -26,6 +26,9 @@ Thumbs.db
 
 # SQLite
 *.db
+*.db-shm
+*.db-wal
+backend/data/
 
 # Coverage
 htmlcov/
