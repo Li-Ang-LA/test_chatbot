@@ -2,6 +2,7 @@
 name: implement-issue
 description: Implement a GitHub issue following project conventions
 argument-hint: "[issue-number]"
+user-invocable: true
 ---
 
 Implement GitHub issue #$ARGUMENTS.
