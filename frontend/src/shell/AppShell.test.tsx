@@ -9,6 +9,7 @@ import {
 } from './AppShell';
 import { AuthProvider } from '../auth/AuthContext';
 import { RequireAuth } from '../auth/RequireAuth';
+import { SessionsProvider } from '../sessions/SessionsProvider';
 
 function RoutePath() {
   const { pathname } = useLocation();
@@ -32,7 +33,9 @@ function renderApp(initialPath = '/') {
           <Route
             element={
               <RequireAuth>
-                <AppShell />
+                <SessionsProvider>
+                  <AppShell />
+                </SessionsProvider>
               </RequireAuth>
             }
           >

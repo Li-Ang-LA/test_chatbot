@@ -11,6 +11,7 @@ import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { AuthContext } from '../auth/context';
 import type { AuthContextValue } from '../auth/context';
+import { SessionsProvider } from '../sessions/SessionsProvider';
 
 const fakeAuth: AuthContextValue = {
   user: {
@@ -56,26 +57,28 @@ function renderSidebar(initialPath = '/') {
   return render(
     <MemoryRouter initialEntries={[initialPath]}>
       <AuthContext.Provider value={fakeAuth}>
-        <Routes>
-          <Route
-            path="/"
-            element={
-              <>
-                <Sidebar />
-                <RoutePath />
-              </>
-            }
-          />
-          <Route
-            path="/c/:sessionId"
-            element={
-              <>
-                <Sidebar />
-                <RoutePath />
-              </>
-            }
-          />
-        </Routes>
+        <SessionsProvider>
+          <Routes>
+            <Route
+              path="/"
+              element={
+                <>
+                  <Sidebar />
+                  <RoutePath />
+                </>
+              }
+            />
+            <Route
+              path="/c/:sessionId"
+              element={
+                <>
+                  <Sidebar />
+                  <RoutePath />
+                </>
+              }
+            />
+          </Routes>
+        </SessionsProvider>
       </AuthContext.Provider>
     </MemoryRouter>,
   );
