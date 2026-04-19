@@ -1,4 +1,4 @@
-const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
+export const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
 
 export type ChatSession = {
   id: number;
@@ -8,6 +8,15 @@ export type ChatSession = {
   created_at: string;
   updated_at: string;
 };
+
+export type PersistedMessage = {
+  id: number;
+  role: 'user' | 'assistant';
+  content: string;
+  created_at: string;
+};
+
+export type SessionDetail = ChatSession & { messages: PersistedMessage[] };
 
 export type ApiError = { status: number; message: string };
 
@@ -39,6 +48,10 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 export function listSessions(): Promise<ChatSession[]> {
   return request<ChatSession[]>('/sessions');
+}
+
+export function getSession(id: number): Promise<SessionDetail> {
+  return request<SessionDetail>(`/sessions/${id}`);
 }
 
 export function createSession(
