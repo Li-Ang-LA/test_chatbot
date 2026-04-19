@@ -9,6 +9,10 @@ dependencies = [
     "sqlalchemy>=2.0",
     "alembic>=1.15",
     "pydantic-settings>=2.8",
+    "email-validator>=2.2",
+    "passlib[bcrypt]>=1.7",
+    "bcrypt<4.1",
+    "python-jose[cryptography]>=3.3",
 ]
 
 [project.optional-dependencies]
