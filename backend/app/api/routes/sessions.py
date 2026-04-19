@@ -71,6 +71,35 @@ def _signal_end(turn: _ActiveTurn) -> None:
         queue.put_nowait(None)
 
 
+_SSE_HEADERS = {
+    "Cache-Control": "no-cache",
+    "X-Accel-Buffering": "no",
+}
+
+
+async def _consume_subscriber(subscriber: asyncio.Queue, turn: _ActiveTurn):
+    """SSE generator body shared by POST (first subscriber) and GET reattach.
+
+    Reads the subscriber's queue and yields SSE frames until the terminal
+    `done` / `error` event (or a `None` sentinel from `_signal_end`). Always
+    removes itself from the turn's subscriber list on exit; the detached
+    task keeps running even if we go away."""
+    try:
+        while True:
+            item = await subscriber.get()
+            if item is None:
+                return
+            event, data = item
+            yield _sse(event, data)
+            if event in ("done", "error"):
+                return
+    finally:
+        try:
+            turn.subscribers.remove(subscriber)
+        except ValueError:
+            pass
+
+
 def _get_owned_session(db: DbSession, session_id: int, user_id: int) -> ChatSession:
     chat = db.get(ChatSession, session_id)
     if chat is None or chat.user_id != user_id:
@@ -308,30 +337,58 @@ async def send_session_message(
         )
     )
 
-    async def stream():
-        try:
-            while True:
-                item = await subscriber.get()
-                if item is None:  # end-of-stream sentinel
-                    return
-                event, data = item
-                yield _sse(event, data)
-                if event in ("done", "error"):
-                    return
-        finally:
-            # Detach this subscriber; the task itself keeps running so the
-            # assistant message still gets persisted even if the client went
-            # away before `done`.
-            try:
-                turn.subscribers.remove(subscriber)
-            except ValueError:
-                pass
+    return StreamingResponse(
+        _consume_subscriber(subscriber, turn),
+        media_type="text/event-stream",
+        headers=_SSE_HEADERS,
+    )
+
+
+@router.get("/{session_id}/messages/stream")
+async def attach_to_active_turn(
+    session_id: int,
+    user: User = Depends(current_user),
+    db: DbSession = Depends(get_db),
+) -> StreamingResponse:
+    """Attach an SSE subscriber to this session's in-flight Claude turn.
+
+    If no turn is active, returns an SSE response that closes immediately
+    (client interprets this as "nothing is streaming, show persisted
+    history only"). If a turn is active, the subscriber first receives a
+    single `delta` event replaying all text seen so far, then tails
+    future deltas and the terminal `done` / `error`.
+
+    Multiple clients can attach to the same turn; client disconnect just
+    removes this one subscriber, the task keeps running.
+    """
+    chat = _get_owned_session(db, session_id, user.id)
+
+    # The dict-lookup / buffer snapshot / subscriber append below must stay
+    # synchronous (no awaits) so the detached task can't interleave between
+    # them and cause lost or duplicated events.
+    turn = _active_turns.get(chat.id)
+    if turn is None:
+
+        async def empty():
+            return
+            yield  # pragma: no cover — makes this a generator
+
+        return StreamingResponse(
+            empty(),
+            media_type="text/event-stream",
+            headers=_SSE_HEADERS,
+        )
+
+    subscriber: asyncio.Queue = asyncio.Queue()
+    buffer_snapshot = "".join(turn.buffer)
+    turn.subscribers.append(subscriber)
+    if buffer_snapshot:
+        # Replay everything seen so far as one consolidated delta; new
+        # deltas broadcast by the task will arrive after this on the queue.
+        subscriber.put_nowait(("delta", {"text": buffer_snapshot}))
 
     return StreamingResponse(
-        stream(),
+        _consume_subscriber(subscriber, turn),
         media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",
-        },
+        headers=_SSE_HEADERS,
     )

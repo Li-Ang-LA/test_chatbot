@@ -97,26 +97,96 @@ export function useChatStream(sessionId: number) {
 
   useEffect(() => {
     let cancelled = false;
-    getSession(sessionId)
-      .then((detail) => {
+    const ctrl = new AbortController();
+    // Reused for both load+reattach on mount and for send(); only one stream
+    // is ever in flight for a given hook instance.
+    abortRef.current = ctrl;
+
+    (async () => {
+      let history: PersistedMessage[] = [];
+      try {
+        const detail = await getSession(sessionId);
         if (cancelled) return;
+        history = detail.messages;
         setState((prev) => ({
           ...prev,
-          messages: detail.messages.map(toChatMessage),
+          messages: history.map(toChatMessage),
           isLoading: false,
         }));
-      })
-      .catch((err: unknown) => {
+      } catch (err: unknown) {
         if (cancelled) return;
         const message =
           err && typeof err === 'object' && 'message' in err
             ? String((err as { message: unknown }).message)
             : 'Failed to load session';
         setState((prev) => ({ ...prev, error: message, isLoading: false }));
-      });
+        return;
+      }
+
+      // Attach to any in-flight turn so the user sees the live reply even
+      // if they navigated away from the session during a previous send.
+      // If no turn is active, the server closes the stream immediately.
+      try {
+        const res = await fetch(
+          `${API_URL}/sessions/${sessionId}/messages/stream`,
+          { credentials: 'include', signal: ctrl.signal },
+        );
+        if (cancelled || !res.ok || !res.body) return;
+        await consumeSSE(res.body, {
+          onDelta: (text) => {
+            sendingRef.current = true;
+            setState((prev) => ({
+              ...prev,
+              streaming: (prev.streaming ?? '') + text,
+              isSending: true,
+            }));
+          },
+          onDone: (text) => {
+            sendingRef.current = false;
+            setState((prev) => ({
+              ...prev,
+              messages: [
+                ...prev.messages,
+                {
+                  id: `reattach-assistant-${Date.now()}`,
+                  role: 'assistant',
+                  content: text,
+                },
+              ],
+              streaming: null,
+              isSending: false,
+            }));
+          },
+          onError: (message) => {
+            sendingRef.current = false;
+            setState((prev) => ({
+              ...prev,
+              streaming: null,
+              error: message,
+              isSending: false,
+            }));
+          },
+        });
+      } catch (err: unknown) {
+        if (cancelled) return;
+        // AbortError = unmount, ignore. Any other failure is silent on
+        // purpose: reattach is a nicety, the persisted history already
+        // shown is still correct.
+        if (
+          err &&
+          typeof err === 'object' &&
+          'name' in err &&
+          (err as { name: unknown }).name === 'AbortError'
+        ) {
+          return;
+        }
+      }
+    })();
 
     return () => {
       cancelled = true;
+      // Abort whatever stream is currently attached — might be the reattach
+      // fetch spawned above, or a send() that replaced it.
       abortRef.current?.abort();
       abortRef.current = null;
       sendingRef.current = false;
