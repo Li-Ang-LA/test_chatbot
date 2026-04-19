@@ -3,7 +3,11 @@ import { AuthProvider } from './auth/AuthContext';
 import { LoginPage } from './auth/LoginPage';
 import { SignupPage } from './auth/SignupPage';
 import { RequireAuth } from './auth/RequireAuth';
-import { HomePage } from './HomePage';
+import {
+  AppShell,
+  ChatSessionPlaceholder,
+  EmptyHomePlaceholder,
+} from './shell/AppShell';
 
 function App() {
   return (
@@ -13,13 +17,15 @@ function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/signup" element={<SignupPage />} />
           <Route
-            path="/"
             element={
               <RequireAuth>
-                <HomePage />
+                <AppShell />
               </RequireAuth>
             }
-          />
+          >
+            <Route path="/" element={<EmptyHomePlaceholder />} />
+            <Route path="/c/:sessionId" element={<ChatSessionPlaceholder />} />
+          </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </AuthProvider>
