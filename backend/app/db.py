@@ -38,3 +38,11 @@ def get_db() -> Generator[Session, None, None]:
         raise
     finally:
         db.close()
+
+
+def get_session_factory() -> sessionmaker:
+    """FastAPI dependency that returns the sessionmaker bound to the app
+    engine. Handlers that spawn work outlasting the request (e.g. the detached
+    Claude-turn task) use this to open a fresh session of their own. Tests
+    override it with a testing sessionmaker."""
+    return SessionLocal
