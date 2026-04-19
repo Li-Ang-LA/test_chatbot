@@ -57,26 +57,62 @@ def test_send_argv_does_not_shell_interpolate_prompt():
 # ---------- parsing tests -------------------------------------------------
 
 
-def test_parse_assistant_text_block_yields_delta():
+def test_parse_stream_event_content_delta_yields_delta():
+    line = json.dumps(
+        {
+            "type": "stream_event",
+            "event": {
+                "type": "content_block_delta",
+                "delta": {"type": "text_delta", "text": "Hel"},
+            },
+        }
+    ).encode()
+    parsed = _parse_stream_line(line)
+    assert parsed is not None
+    kind, ev = parsed
+    assert kind == "delta"
+    assert ev.type == "text_delta" and ev.text == "Hel"
+
+
+def test_parse_stream_event_non_text_delta_is_ignored():
+    line = json.dumps(
+        {
+            "type": "stream_event",
+            "event": {
+                "type": "content_block_delta",
+                "delta": {"type": "input_json_delta", "partial_json": "{}"},
+            },
+        }
+    ).encode()
+    assert _parse_stream_line(line) is None
+
+
+def test_parse_assistant_text_block_yields_assistant_full():
     line = json.dumps(
         {
             "type": "assistant",
             "message": {"content": [{"type": "text", "text": "Hello"}]},
         }
     ).encode()
-    ev = _parse_stream_line(line)
-    assert ev is not None and ev.type == "text_delta" and ev.text == "Hello"
+    parsed = _parse_stream_line(line)
+    assert parsed is not None
+    kind, ev = parsed
+    assert kind == "assistant_full"
+    assert ev.type == "text_delta" and ev.text == "Hello"
 
 
-def test_parse_result_line_yields_message_done():
-    ev = _parse_stream_line(b'{"type":"result","subtype":"success"}')
-    assert ev is not None and ev.type == "message_done"
+def test_parse_result_line_yields_done():
+    parsed = _parse_stream_line(b'{"type":"result","subtype":"success"}')
+    assert parsed is not None
+    kind, ev = parsed
+    assert kind == "done"
+    assert ev.type == "message_done"
 
 
 def test_parse_malformed_line_returns_none(caplog):
     with caplog.at_level("WARNING"):
-        ev = _parse_stream_line(b"not-json")
-    assert ev is None
+        parsed = _parse_stream_line(b"not-json")
+    assert parsed is None
     assert any("malformed" in r.message for r in caplog.records)
 
 
@@ -198,15 +234,33 @@ def _assistant_line(text: str) -> bytes:
     ).encode()
 
 
+def _stream_event_delta(text: str) -> bytes:
+    return (
+        json.dumps(
+            {
+                "type": "stream_event",
+                "event": {
+                    "type": "content_block_delta",
+                    "delta": {"type": "text_delta", "text": text},
+                },
+            }
+        )
+        + "\n"
+    ).encode()
+
+
 def _result_line() -> bytes:
     return b'{"type":"result","subtype":"success"}\n'
 
 
-async def test_send_message_yields_deltas_then_done(monkeypatch):
+async def test_send_message_streams_content_block_deltas_then_done(monkeypatch):
     fake = _FakeProcess(
         stdout_lines=[
-            _assistant_line("Hello"),
-            _assistant_line(" world"),
+            _stream_event_delta("Hello"),
+            _stream_event_delta(" world"),
+            # assistant summary arrives after the fragments; it must NOT be
+            # re-emitted because the client has already seen the full text.
+            _assistant_line("Hello world"),
             _result_line(),
         ]
     )
@@ -215,17 +269,37 @@ async def test_send_message_yields_deltas_then_done(monkeypatch):
 
     events = [ev async for ev in send_message("sid-1", "hi")]
     assert [ev.type for ev in events] == ["text_delta", "text_delta", "message_done"]
-    assert "".join(ev.text or "" for ev in events) == "Hello world"
+    assert [ev.text for ev in events if ev.text] == ["Hello", " world"]
     # argv sanity
     assert "--resume" in captured["argv"]
     assert "sid-1" in captured["argv"]
     assert "hi" in captured["argv"]
 
 
+async def test_send_message_falls_back_to_assistant_when_no_deltas(monkeypatch):
+    """Older / non-streaming CLI output: only the assistant summary arrives.
+
+    In that case we still want to surface a single text_delta with the full
+    text so the client gets the reply instead of nothing.
+    """
+    fake = _FakeProcess(
+        stdout_lines=[
+            _assistant_line("Hello world"),
+            _result_line(),
+        ]
+    )
+    _patch_exec(monkeypatch, fake, {})
+
+    events = [ev async for ev in send_message("sid", "hi")]
+    assert [ev.type for ev in events] == ["text_delta", "message_done"]
+    assert events[0].text == "Hello world"
+
+
 async def test_send_message_skips_malformed_json_lines(monkeypatch, caplog):
     fake = _FakeProcess(
         stdout_lines=[
             b"not-json\n",
+            _stream_event_delta("ok"),
             _assistant_line("ok"),
             _result_line(),
         ]
@@ -253,7 +327,7 @@ async def test_send_message_times_out_and_kills(monkeypatch):
 
 async def test_send_message_emits_error_on_nonzero_exit(monkeypatch):
     fake = _FakeProcess(
-        stdout_lines=[_assistant_line("partial")],
+        stdout_lines=[_stream_event_delta("partial")],
         stderr_bytes=b"oops",
         returncode=2,
     )
