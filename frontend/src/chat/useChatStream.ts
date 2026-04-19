@@ -80,35 +80,23 @@ async function consumeSSE(
   }
 }
 
-const EMPTY_STATE: HookState = {
-  messages: [],
-  streaming: null,
-  error: null,
-  isLoading: false,
-  isSending: false,
-};
-
-function initialState(sessionId: number | undefined): HookState {
-  return sessionId == null ? EMPTY_STATE : { ...EMPTY_STATE, isLoading: true };
-}
-
-export function useChatStream(sessionId: number | undefined) {
-  const [state, setState] = useState<HookState>(() => initialState(sessionId));
-  const [trackedSessionId, setTrackedSessionId] = useState(sessionId);
-
-  if (sessionId !== trackedSessionId) {
-    setTrackedSessionId(sessionId);
-    setState(initialState(sessionId));
-  }
+// The hook assumes `sessionId` is stable for its lifetime. Callers render this
+// hook's host component with `key={sessionId}` so a route change remounts it —
+// which both isolates state per session and triggers the abort-on-unmount path.
+export function useChatStream(sessionId: number) {
+  const [state, setState] = useState<HookState>({
+    messages: [],
+    streaming: null,
+    error: null,
+    isLoading: true,
+    isSending: false,
+  });
 
   const abortRef = useRef<AbortController | null>(null);
   const sendingRef = useRef(false);
 
   useEffect(() => {
-    if (sessionId == null) return;
-
     let cancelled = false;
-
     getSession(sessionId)
       .then((detail) => {
         if (cancelled) return;
@@ -137,7 +125,6 @@ export function useChatStream(sessionId: number | undefined) {
 
   const send = useCallback(
     async (content: string) => {
-      if (sessionId == null) return;
       if (sendingRef.current) return;
       sendingRef.current = true;
 
