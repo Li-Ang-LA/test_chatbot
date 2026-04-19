@@ -9,6 +9,22 @@ import {
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
+import { AuthContext } from '../auth/context';
+import type { AuthContextValue } from '../auth/context';
+
+const fakeAuth: AuthContextValue = {
+  user: {
+    id: 1,
+    email: 'a@b.co',
+    username: 'alice',
+    created_at: '2026-01-01T00:00:00Z',
+  },
+  status: 'authenticated',
+  login: async () => {},
+  signup: async () => {},
+  logout: async () => {},
+  refresh: async () => {},
+};
 
 type FakeSession = {
   id: number;
@@ -20,7 +36,7 @@ type FakeSession = {
 };
 
 function makeSession(id: number, title: string): FakeSession {
-  const iso = `2026-01-0${id}T00:00:00Z`;
+  const iso = `2026-01-${String(id).padStart(2, '0')}T00:00:00Z`;
   return {
     id,
     title,
@@ -39,26 +55,28 @@ function RoutePath() {
 function renderSidebar(initialPath = '/') {
   return render(
     <MemoryRouter initialEntries={[initialPath]}>
-      <Routes>
-        <Route
-          path="/"
-          element={
-            <>
-              <Sidebar />
-              <RoutePath />
-            </>
-          }
-        />
-        <Route
-          path="/c/:sessionId"
-          element={
-            <>
-              <Sidebar />
-              <RoutePath />
-            </>
-          }
-        />
-      </Routes>
+      <AuthContext.Provider value={fakeAuth}>
+        <Routes>
+          <Route
+            path="/"
+            element={
+              <>
+                <Sidebar />
+                <RoutePath />
+              </>
+            }
+          />
+          <Route
+            path="/c/:sessionId"
+            element={
+              <>
+                <Sidebar />
+                <RoutePath />
+              </>
+            }
+          />
+        </Routes>
+      </AuthContext.Provider>
     </MemoryRouter>,
   );
 }
@@ -173,6 +191,37 @@ describe('Sidebar', () => {
     expect(
       await screen.findByRole('button', { name: 'Trip planning' }),
     ).toBeInTheDocument();
+  });
+
+  it('row menu closes on Escape and on outside click', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = typeof input === 'string' ? input : (input as Request).url;
+      const method = (init?.method ?? 'GET').toUpperCase();
+      if (url.endsWith('/sessions') && method === 'GET')
+        return jsonResponse([makeSession(3, 'Test chat')]);
+      return new Response(null, { status: 404 });
+    });
+
+    const user = userEvent.setup();
+    renderSidebar();
+
+    await screen.findByRole('button', { name: 'Test chat' });
+
+    // Open via click, close via Escape.
+    await user.click(
+      screen.getByRole('button', { name: /actions for test chat/i }),
+    );
+    expect(screen.getByRole('menu')).toBeInTheDocument();
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+
+    // Open again, click outside → close.
+    await user.click(
+      screen.getByRole('button', { name: /actions for test chat/i }),
+    );
+    expect(screen.getByRole('menu')).toBeInTheDocument();
+    await user.click(screen.getByTestId('route-path'));
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
   });
 
   it('delete shows confirm dialog before firing DELETE', async () => {

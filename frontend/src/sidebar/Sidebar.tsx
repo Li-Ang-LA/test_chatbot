@@ -3,10 +3,12 @@ import {
   useEffect,
   useRef,
   useState,
+  type FocusEvent,
   type KeyboardEvent,
 } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
+  LogOut,
   MoreHorizontal,
   PanelLeftClose,
   PanelLeftOpen,
@@ -19,6 +21,7 @@ import {
   updateSession,
 } from '../sessions/api';
 import type { ChatSession } from '../sessions/api';
+import { useAuth } from '../auth/useAuth';
 
 const COLLAPSED_KEY = 'sidebar:collapsed';
 
@@ -52,12 +55,42 @@ export function Sidebar() {
     window.localStorage.setItem(COLLAPSED_KEY, collapsed ? '1' : '0');
   }, [collapsed]);
 
+  // Close the row "..." menu on click-outside or Escape.
+  useEffect(() => {
+    if (menuOpenFor === null) return;
+
+    function handleMouseDown(e: MouseEvent) {
+      const target = e.target as Node | null;
+      if (!target) return;
+      const openMenu = document.querySelector('[data-row-menu="true"]');
+      const triggers = document.querySelectorAll(
+        '[aria-haspopup="menu"][data-row-menu-trigger="true"]',
+      );
+      const insideMenu = openMenu?.contains(target) ?? false;
+      const onTrigger = Array.from(triggers).some((t) => t.contains(target));
+      if (!insideMenu && !onTrigger) setMenuOpenFor(null);
+    }
+    function handleKey(e: globalThis.KeyboardEvent) {
+      if (e.key === 'Escape') setMenuOpenFor(null);
+    }
+    document.addEventListener('mousedown', handleMouseDown);
+    document.addEventListener('keydown', handleKey);
+    return () => {
+      document.removeEventListener('mousedown', handleMouseDown);
+      document.removeEventListener('keydown', handleKey);
+    };
+  }, [menuOpenFor]);
+
   const toggleCollapsed = useCallback(() => setCollapsed((c) => !c), []);
 
   const handleNew = useCallback(async () => {
-    const created = await createSession();
-    setSessions((prev) => [created, ...prev]);
-    navigate(`/c/${created.id}`);
+    try {
+      const created = await createSession();
+      setSessions((prev) => [created, ...prev]);
+      navigate(`/c/${created.id}`);
+    } catch (err) {
+      console.error('Failed to create session', err);
+    }
   }, [navigate]);
 
   const handleRename = useCallback(async (id: number, nextTitle: string) => {
@@ -66,17 +99,27 @@ export function Sidebar() {
       setRenamingId(null);
       return;
     }
-    const updated = await updateSession(id, { title: trimmed });
-    setSessions((prev) => prev.map((s) => (s.id === id ? updated : s)));
-    setRenamingId(null);
+    try {
+      const updated = await updateSession(id, { title: trimmed });
+      setSessions((prev) => prev.map((s) => (s.id === id ? updated : s)));
+    } catch (err) {
+      console.error('Failed to rename session', err);
+    } finally {
+      setRenamingId(null);
+    }
   }, []);
 
   const handleConfirmDelete = useCallback(
     async (id: number) => {
-      await deleteSession(id);
-      setSessions((prev) => prev.filter((s) => s.id !== id));
-      setConfirmingDeleteId(null);
-      if (activeId === id) navigate('/');
+      try {
+        await deleteSession(id);
+        setSessions((prev) => prev.filter((s) => s.id !== id));
+        if (activeId === id) navigate('/');
+      } catch (err) {
+        console.error('Failed to delete session', err);
+      } finally {
+        setConfirmingDeleteId(null);
+      }
     },
     [activeId, navigate],
   );
@@ -104,6 +147,7 @@ export function Sidebar() {
         >
           <SquarePen size={18} aria-hidden="true" />
         </button>
+        <UserMenu collapsed />
       </aside>
     );
   }
@@ -145,6 +189,7 @@ export function Sidebar() {
             onOpenMenu={() =>
               setMenuOpenFor((cur) => (cur === session.id ? null : session.id))
             }
+            onCloseMenu={() => setMenuOpenFor(null)}
             onStartRename={() => {
               setMenuOpenFor(null);
               setRenamingId(session.id);
@@ -158,6 +203,8 @@ export function Sidebar() {
           />
         ))}
       </ul>
+
+      <UserMenu />
 
       {confirmingDeleteId !== null && (
         <DeleteConfirmDialog
@@ -173,6 +220,55 @@ export function Sidebar() {
   );
 }
 
+function UserMenu({ collapsed = false }: { collapsed?: boolean }) {
+  const { user, logout } = useAuth();
+  if (!user) return null;
+  const initial = user.username.slice(0, 1).toUpperCase();
+
+  if (collapsed) {
+    return (
+      <div className="mt-auto flex flex-col items-center gap-2">
+        <div
+          aria-label={`Signed in as ${user.username}`}
+          className="flex size-8 items-center justify-center rounded-full bg-neutral-300 text-sm font-medium text-neutral-800"
+        >
+          {initial}
+        </div>
+        <button
+          type="button"
+          aria-label="Log out"
+          onClick={() => void logout()}
+          className="rounded-xl p-2 hover:bg-neutral-200"
+        >
+          <LogOut size={16} aria-hidden="true" />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-2 border-t border-neutral-200 px-3 py-3">
+      <div
+        aria-hidden="true"
+        className="flex size-8 shrink-0 items-center justify-center rounded-full bg-neutral-300 text-sm font-medium text-neutral-800"
+      >
+        {initial}
+      </div>
+      <div className="min-w-0 flex-1 truncate text-sm text-neutral-700">
+        {user.username}
+      </div>
+      <button
+        type="button"
+        aria-label="Log out"
+        onClick={() => void logout()}
+        className="rounded-xl p-2 hover:bg-neutral-200"
+      >
+        <LogOut size={16} aria-hidden="true" />
+      </button>
+    </div>
+  );
+}
+
 type SessionRowProps = {
   session: ChatSession;
   isActive: boolean;
@@ -180,6 +276,7 @@ type SessionRowProps = {
   isMenuOpen: boolean;
   onOpen: () => void;
   onOpenMenu: () => void;
+  onCloseMenu: () => void;
   onStartRename: () => void;
   onFinishRename: (title: string) => void;
   onCancelRename: () => void;
@@ -193,22 +290,76 @@ function SessionRow({
   isMenuOpen,
   onOpen,
   onOpenMenu,
+  onCloseMenu,
   onStartRename,
   onFinishRename,
   onCancelRename,
   onRequestDelete,
 }: SessionRowProps) {
-  const inputRef = useRef<HTMLInputElement | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  // Set by Enter/Escape in the rename input so the subsequent blur event
+  // doesn't fire a duplicate submit.
+  const renameHandledRef = useRef(false);
 
   useEffect(() => {
     if (isRenaming) inputRef.current?.focus();
   }, [isRenaming]);
 
-  function handleKey(e: KeyboardEvent<HTMLInputElement>) {
+  // When the row's action menu opens, focus the first menuitem so keyboard
+  // users can navigate with Arrow/Home/End/Escape immediately.
+  useEffect(() => {
+    if (!isMenuOpen) return;
+    const first =
+      menuRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]');
+    first?.focus();
+  }, [isMenuOpen]);
+
+  function handleRenameKey(e: KeyboardEvent<HTMLInputElement>) {
     if (e.key === 'Enter') {
+      renameHandledRef.current = true;
       onFinishRename(e.currentTarget.value);
     } else if (e.key === 'Escape') {
+      renameHandledRef.current = true;
       onCancelRename();
+    }
+  }
+
+  function handleRenameBlur(e: FocusEvent<HTMLInputElement>) {
+    if (renameHandledRef.current) {
+      renameHandledRef.current = false;
+      return;
+    }
+    onFinishRename(e.currentTarget.value);
+  }
+
+  function handleMenuKeyDown(e: KeyboardEvent<HTMLDivElement>) {
+    const items = menuRef.current
+      ? Array.from(
+          menuRef.current.querySelectorAll<HTMLButtonElement>(
+            '[role="menuitem"]',
+          ),
+        )
+      : [];
+    if (items.length === 0) return;
+    const activeIdx = items.findIndex((el) => el === document.activeElement);
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      items[(activeIdx + 1 + items.length) % items.length].focus();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      items[(activeIdx - 1 + items.length) % items.length].focus();
+    } else if (e.key === 'Home') {
+      e.preventDefault();
+      items[0].focus();
+    } else if (e.key === 'End') {
+      e.preventDefault();
+      items[items.length - 1].focus();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      onCloseMenu();
+      triggerRef.current?.focus();
     }
   }
 
@@ -225,8 +376,8 @@ function SessionRow({
           ref={inputRef}
           defaultValue={session.title}
           aria-label="Rename session"
-          onKeyDown={handleKey}
-          onBlur={(e) => onFinishRename(e.currentTarget.value)}
+          onKeyDown={handleRenameKey}
+          onBlur={handleRenameBlur}
           className="w-full rounded-md border border-neutral-300 bg-white px-2 py-1 text-sm outline-none focus:border-neutral-900"
         />
       ) : (
@@ -242,10 +393,12 @@ function SessionRow({
       {!isRenaming && (
         <div className="relative ml-2 flex-shrink-0">
           <button
+            ref={triggerRef}
             type="button"
             aria-label={`Actions for ${session.title}`}
             aria-haspopup="menu"
             aria-expanded={isMenuOpen}
+            data-row-menu-trigger="true"
             onClick={onOpenMenu}
             className="rounded-md p-1 opacity-0 group-hover:opacity-100 hover:bg-neutral-300 data-[open=true]:opacity-100"
             data-open={isMenuOpen || undefined}
@@ -254,7 +407,10 @@ function SessionRow({
           </button>
           {isMenuOpen && (
             <div
+              ref={menuRef}
               role="menu"
+              data-row-menu="true"
+              onKeyDown={handleMenuKeyDown}
               className="absolute top-full right-0 z-10 mt-1 w-32 rounded-xl border border-neutral-200 bg-white py-1 shadow-sm"
             >
               <button

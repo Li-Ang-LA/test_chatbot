@@ -28,7 +28,7 @@ export default defineConfig({
       url: `${BACKEND_URL}/health`,
       env: {
         DATABASE_URL: 'sqlite:///./data/e2e.db',
-        SECRET_KEY: 'e2e-test-secret-key',
+        SECRET_KEY: 'e2e-test-secret-key-at-least-32-bytes-long',
         CORS_ORIGINS: FRONTEND_URL,
         COOKIE_SECURE: 'false',
       },

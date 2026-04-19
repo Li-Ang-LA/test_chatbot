@@ -41,3 +41,8 @@ line-length = 88
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+filterwarnings = [
+    # Dev/test SECRET_KEY is intentionally short; production config uses a
+    # proper secret. Silencing keeps the test log readable.
+    "ignore::jwt.warnings.InsecureKeyLengthWarning",
+]

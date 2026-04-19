@@ -19,8 +19,9 @@ test('signup, logout, then login lands on home', async ({ page }) => {
 
   await expect(page).toHaveURL(/\/$/);
   await expect(
-    page.getByRole('heading', { name: new RegExp(`hello, ${username}`, 'i') }),
+    page.getByRole('complementary', { name: /sidebar/i }),
   ).toBeVisible();
+  await expect(page.getByText(username)).toBeVisible();
 
   // Log out returns to /login.
   await page.getByRole('button', { name: /log out/i }).click();
@@ -37,6 +38,7 @@ test('signup, logout, then login lands on home', async ({ page }) => {
 
   await expect(page).toHaveURL(/\/$/);
   await expect(
-    page.getByRole('heading', { name: new RegExp(`hello, ${username}`, 'i') }),
+    page.getByRole('complementary', { name: /sidebar/i }),
   ).toBeVisible();
+  await expect(page.getByText(username)).toBeVisible();
 });
