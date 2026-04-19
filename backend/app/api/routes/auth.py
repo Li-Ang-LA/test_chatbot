@@ -82,10 +82,14 @@ def login(
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
-def logout(response: Response) -> Response:
-    response.delete_cookie(key=AUTH_COOKIE_NAME, path="/")
-    response.status_code = status.HTTP_204_NO_CONTENT
-    return response
+def logout(response: Response) -> None:
+    response.delete_cookie(
+        key=AUTH_COOKIE_NAME,
+        path="/",
+        httponly=True,
+        samesite="lax",
+        secure=settings.COOKIE_SECURE,
+    )
 
 
 @router.get("/me", response_model=UserOut)
