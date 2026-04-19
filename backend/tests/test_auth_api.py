@@ -61,6 +61,12 @@ def test_signup_short_password_returns_422(client):
     assert resp.status_code == 422
 
 
+def test_signup_invalid_username_characters_return_422(client):
+    for bad in ("alice jones", "alice!", "alice@home", "a"):
+        resp = client.post("/auth/signup", json={**VALID_PAYLOAD, "username": bad})
+        assert resp.status_code == 422, f"expected 422 for username={bad!r}"
+
+
 def test_login_success_sets_cookie(client):
     client.post("/auth/signup", json=VALID_PAYLOAD)
     client.cookies.clear()
@@ -106,7 +112,14 @@ def test_logout_clears_cookie(client):
     client.post("/auth/signup", json=VALID_PAYLOAD)
     assert client.get("/auth/me").status_code == 200
 
-    assert client.post("/auth/logout").status_code == 204
+    resp = client.post("/auth/logout")
+    assert resp.status_code == 204
+
+    set_cookie = resp.headers.get("set-cookie", "").lower()
+    assert "auth_token=" in set_cookie
+    assert "httponly" in set_cookie
+    assert "samesite=lax" in set_cookie
+
     client.cookies.clear()
     assert client.get("/auth/me").status_code == 401
 
