@@ -37,3 +37,7 @@ class MessageOut(BaseModel):
 
 class SessionDetail(SessionOut):
     messages: list[MessageOut]
+
+
+class MessageCreate(BaseModel):
+    content: str = Field(min_length=1, max_length=50_000)
