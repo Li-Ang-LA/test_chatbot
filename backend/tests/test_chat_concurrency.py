@@ -22,7 +22,7 @@ from sqlalchemy.pool import StaticPool
 from app import claude_runner
 from app.api.routes import sessions as sessions_route
 from app.claude_runner import StreamEvent
-from app.db import Base, get_db
+from app.db import Base, get_db, get_session_factory
 from app.main import app
 from app.models import Message, MessageRole
 
@@ -65,9 +65,10 @@ async def async_client(_engine: Engine) -> AsyncGenerator[httpx.AsyncClient, Non
             db.close()
 
     app.dependency_overrides[get_db] = override_get_db
-    # Clear the module-level session-lock registry between tests so state
+    app.dependency_overrides[get_session_factory] = lambda: TestingSession
+    # Clear the module-level active-turn registry between tests so state
     # from an earlier test can't leak into this one.
-    sessions_route._session_locks.clear()
+    sessions_route._active_turns.clear()
     transport = ASGITransport(app=app)
     try:
         async with httpx.AsyncClient(
@@ -76,6 +77,7 @@ async def async_client(_engine: Engine) -> AsyncGenerator[httpx.AsyncClient, Non
             yield c
     finally:
         app.dependency_overrides.pop(get_db, None)
+        app.dependency_overrides.pop(get_session_factory, None)
 
 
 async def _signup_alice(client: httpx.AsyncClient) -> None:
