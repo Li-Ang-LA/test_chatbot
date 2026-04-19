@@ -9,6 +9,22 @@ import {
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
+import { AuthContext } from '../auth/context';
+import type { AuthContextValue } from '../auth/context';
+
+const fakeAuth: AuthContextValue = {
+  user: {
+    id: 1,
+    email: 'a@b.co',
+    username: 'alice',
+    created_at: '2026-01-01T00:00:00Z',
+  },
+  status: 'authenticated',
+  login: async () => {},
+  signup: async () => {},
+  logout: async () => {},
+  refresh: async () => {},
+};
 
 type FakeSession = {
   id: number;
@@ -39,26 +55,28 @@ function RoutePath() {
 function renderSidebar(initialPath = '/') {
   return render(
     <MemoryRouter initialEntries={[initialPath]}>
-      <Routes>
-        <Route
-          path="/"
-          element={
-            <>
-              <Sidebar />
-              <RoutePath />
-            </>
-          }
-        />
-        <Route
-          path="/c/:sessionId"
-          element={
-            <>
-              <Sidebar />
-              <RoutePath />
-            </>
-          }
-        />
-      </Routes>
+      <AuthContext.Provider value={fakeAuth}>
+        <Routes>
+          <Route
+            path="/"
+            element={
+              <>
+                <Sidebar />
+                <RoutePath />
+              </>
+            }
+          />
+          <Route
+            path="/c/:sessionId"
+            element={
+              <>
+                <Sidebar />
+                <RoutePath />
+              </>
+            }
+          />
+        </Routes>
+      </AuthContext.Provider>
     </MemoryRouter>,
   );
 }

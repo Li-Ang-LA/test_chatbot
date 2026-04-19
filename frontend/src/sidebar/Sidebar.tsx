@@ -7,6 +7,7 @@ import {
 } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
+  LogOut,
   MoreHorizontal,
   PanelLeftClose,
   PanelLeftOpen,
@@ -19,6 +20,7 @@ import {
   updateSession,
 } from '../sessions/api';
 import type { ChatSession } from '../sessions/api';
+import { useAuth } from '../auth/useAuth';
 
 const COLLAPSED_KEY = 'sidebar:collapsed';
 
@@ -104,6 +106,7 @@ export function Sidebar() {
         >
           <SquarePen size={18} aria-hidden="true" />
         </button>
+        <UserMenu collapsed />
       </aside>
     );
   }
@@ -159,6 +162,8 @@ export function Sidebar() {
         ))}
       </ul>
 
+      <UserMenu />
+
       {confirmingDeleteId !== null && (
         <DeleteConfirmDialog
           title={
@@ -170,6 +175,55 @@ export function Sidebar() {
         />
       )}
     </aside>
+  );
+}
+
+function UserMenu({ collapsed = false }: { collapsed?: boolean }) {
+  const { user, logout } = useAuth();
+  if (!user) return null;
+  const initial = user.username.slice(0, 1).toUpperCase();
+
+  if (collapsed) {
+    return (
+      <div className="mt-auto flex flex-col items-center gap-2">
+        <div
+          aria-label={`Signed in as ${user.username}`}
+          className="flex size-8 items-center justify-center rounded-full bg-neutral-300 text-sm font-medium text-neutral-800"
+        >
+          {initial}
+        </div>
+        <button
+          type="button"
+          aria-label="Log out"
+          onClick={() => void logout()}
+          className="rounded-xl p-2 hover:bg-neutral-200"
+        >
+          <LogOut size={16} aria-hidden="true" />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-2 border-t border-neutral-200 px-3 py-3">
+      <div
+        aria-hidden="true"
+        className="flex size-8 shrink-0 items-center justify-center rounded-full bg-neutral-300 text-sm font-medium text-neutral-800"
+      >
+        {initial}
+      </div>
+      <div className="min-w-0 flex-1 truncate text-sm text-neutral-700">
+        {user.username}
+      </div>
+      <button
+        type="button"
+        aria-label="Log out"
+        onClick={() => void logout()}
+        className="rounded-xl p-2 hover:bg-neutral-200"
+      >
+        <LogOut size={16} aria-hidden="true" />
+      </button>
+    </div>
   );
 }
 
