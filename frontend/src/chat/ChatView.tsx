@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { SUGGESTIONS } from './suggestions';
+import { AssistantMarkdown } from './AssistantMarkdown';
 import type { ChatMessage } from './types';
 
 type Props = {
@@ -61,7 +62,11 @@ export function ChatView({ messages, onSubmit }: Props) {
                     : 'w-full text-base leading-relaxed text-neutral-800'
                 }
               >
-                {m.content}
+                {m.role === 'assistant' ? (
+                  <AssistantMarkdown content={m.content} />
+                ) : (
+                  m.content
+                )}
               </li>
             ))}
           </ol>

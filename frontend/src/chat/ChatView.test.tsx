@@ -108,13 +108,15 @@ describe('ChatView active state (M3.4)', () => {
     ];
     render(<ChatView messages={messages} />);
 
-    const userNode = screen.getByText('what is quicksort?');
+    const userNode = screen.getByText('what is quicksort?').closest('li');
     expect(userNode).toHaveAttribute('data-role', 'user');
-    expect(userNode.className).toMatch(/bg-neutral-900/);
+    expect(userNode!.className).toMatch(/bg-neutral-900/);
 
-    const assistantNode = screen.getByText('A divide-and-conquer sort…');
+    const assistantNode = screen
+      .getByText('A divide-and-conquer sort…')
+      .closest('li');
     expect(assistantNode).toHaveAttribute('data-role', 'assistant');
-    expect(assistantNode.className).not.toMatch(/bg-neutral-900/);
+    expect(assistantNode!.className).not.toMatch(/bg-neutral-900/);
   });
 
   it('auto-scrolls to the bottom when streaming new content', () => {
