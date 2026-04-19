@@ -1,7 +1,6 @@
 import { Outlet, useParams } from 'react-router-dom';
 import { Sidebar } from '../sidebar/Sidebar';
-import { ChatView } from '../chat/ChatView';
-import { useChatStream } from '../chat/useChatStream';
+import { SessionChat } from '../chat/SessionChat';
 
 export function AppShell() {
   return (
@@ -27,20 +26,9 @@ export function EmptyHomePlaceholder() {
 
 export function ChatSessionPlaceholder() {
   const { sessionId } = useParams<{ sessionId: string }>();
-  const numericId = sessionId ? Number(sessionId) : undefined;
-  const { messages, error, send } = useChatStream(numericId);
-
-  return (
-    <>
-      {error && (
-        <div
-          role="alert"
-          className="border-b border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700"
-        >
-          {error}
-        </div>
-      )}
-      <ChatView messages={messages} onSubmit={send} />
-    </>
-  );
+  const numericId = Number(sessionId);
+  if (!Number.isFinite(numericId)) return null;
+  // `key` forces SessionChat (and its useChatStream state + in-flight fetch)
+  // to remount on navigation between sessions, so nothing leaks across routes.
+  return <SessionChat key={numericId} sessionId={numericId} />;
 }
