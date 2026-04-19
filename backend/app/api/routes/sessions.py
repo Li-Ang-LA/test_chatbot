@@ -1,3 +1,4 @@
+import asyncio
 import json
 from datetime import datetime, timezone
 
@@ -24,6 +25,19 @@ DEFAULT_TITLE = "New chat"
 MAX_AUTO_TITLE_LEN = 60
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
+
+# Per-session locks prevent two overlapping Claude turns from interleaving
+# on the same session. Parallel turns on *different* sessions stay fully
+# independent because each session gets its own lock.
+_session_locks: dict[int, asyncio.Lock] = {}
+
+
+def _get_session_lock(session_id: int) -> asyncio.Lock:
+    lock = _session_locks.get(session_id)
+    if lock is None:
+        lock = asyncio.Lock()
+        _session_locks[session_id] = lock
+    return lock
 
 
 def _get_owned_session(db: DbSession, session_id: int, user_id: int) -> ChatSession:
@@ -142,37 +156,53 @@ async def send_session_message(
     """
     chat = _get_owned_session(db, session_id, user.id)
 
-    # 1) Persist the user message; bump title if still the default.
-    user_message = Message(
-        session_id=chat.id,
-        role=MessageRole.user,
-        content=payload.content,
-    )
-    db.add(user_message)
-    if chat.title == DEFAULT_TITLE:
-        auto_title = payload.content.strip()[:MAX_AUTO_TITLE_LEN]
-        if auto_title:
-            chat.title = auto_title
-    db.commit()
-    db.refresh(chat)
+    # Reject a second concurrent turn on the *same* session with 409.
+    # On a single asyncio event loop, checking `lock.locked()` then calling
+    # `lock.acquire()` on the unlocked fast path is atomic (no yield point
+    # between them), so no request can slip past the check.
+    lock = _get_session_lock(chat.id)
+    if lock.locked():
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A message is already streaming for this session",
+        )
+    await lock.acquire()
 
-    # 2) Initialize the Claude session on the first turn.
-    if chat.claude_session_id is None:
-        try:
-            claude_sid = await claude_runner.start_session(chat.system_prompt)
-        except claude_runner.ClaudeRunnerError as e:
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=f"Could not start claude session: {e}",
-            ) from e
-        chat.claude_session_id = claude_sid
+    try:
+        # 1) Persist the user message; bump title if still the default.
+        user_message = Message(
+            session_id=chat.id,
+            role=MessageRole.user,
+            content=payload.content,
+        )
+        db.add(user_message)
+        if chat.title == DEFAULT_TITLE:
+            auto_title = payload.content.strip()[:MAX_AUTO_TITLE_LEN]
+            if auto_title:
+                chat.title = auto_title
         db.commit()
         db.refresh(chat)
 
-    claude_session_id = chat.claude_session_id
-    assert claude_session_id is not None
-    chat_id = chat.id
-    prompt = payload.content
+        # 2) Initialize the Claude session on the first turn.
+        if chat.claude_session_id is None:
+            try:
+                claude_sid = await claude_runner.start_session(chat.system_prompt)
+            except claude_runner.ClaudeRunnerError as e:
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=f"Could not start claude session: {e}",
+                ) from e
+            chat.claude_session_id = claude_sid
+            db.commit()
+            db.refresh(chat)
+
+        claude_session_id = chat.claude_session_id
+        assert claude_session_id is not None
+        chat_id = chat.id
+        prompt = payload.content
+    except BaseException:
+        lock.release()
+        raise
 
     async def stream():
         buffer: list[str] = []
@@ -201,6 +231,8 @@ async def send_session_message(
         except Exception as e:  # defensive: any unexpected runner failure
             yield _sse("error", {"error": f"internal error: {e}"})
             return
+        finally:
+            lock.release()
 
     return StreamingResponse(
         stream(),
