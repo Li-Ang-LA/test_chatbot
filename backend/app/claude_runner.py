@@ -65,6 +65,9 @@ def _build_send_argv(claude_session_id: str, prompt: str) -> list[str]:
         "--output-format",
         "stream-json",
         "--verbose",
+        # Required for the CLI to emit stream_event / content_block_delta
+        # records; without it we only get a single terminal assistant block.
+        "--include-partial-messages",
     ]
 
 
@@ -103,11 +106,24 @@ async def start_session(
     return session_id
 
 
-def _parse_stream_line(line: bytes) -> StreamEvent | None:
-    """Parse one NDJSON line from `claude --output-format stream-json`.
+ParsedKind = Literal["delta", "assistant_full", "done"]
 
-    Returns a StreamEvent, or None for lines we don't need to surface.
-    Malformed JSON is logged and dropped rather than crashing the iterator.
+
+def _parse_stream_line(line: bytes) -> tuple[ParsedKind, StreamEvent] | None:
+    """Parse one NDJSON line from `claude --output-format stream-json --verbose`.
+
+    Returns `(kind, event)` where `kind` tells the caller how to treat the
+    event, or None for lines we don't need to surface. Malformed JSON is
+    logged and dropped rather than crashing the iterator.
+
+    The CLI interleaves `stream_event` records (with `content_block_delta`
+    fragments) during generation and then emits one `assistant` summary
+    containing the full text. We surface:
+
+    - ("delta",  text_delta)  — an incremental fragment from stream_event
+    - ("assistant_full", text_delta) — the final summary; callers can use
+      this as a fallback when no incremental fragments were seen
+    - ("done", message_done) — the result terminator
     """
     stripped = line.strip()
     if not stripped:
@@ -121,6 +137,17 @@ def _parse_stream_line(line: bytes) -> StreamEvent | None:
         return None
 
     kind = obj.get("type")
+
+    if kind == "stream_event":
+        event = obj.get("event") or {}
+        if event.get("type") == "content_block_delta":
+            delta = event.get("delta") or {}
+            if delta.get("type") == "text_delta":
+                text = delta.get("text", "")
+                if isinstance(text, str) and text:
+                    return "delta", StreamEvent(type="text_delta", text=text)
+        return None
+
     if kind == "assistant":
         message = obj.get("message") or {}
         content = message.get("content") or []
@@ -131,10 +158,12 @@ def _parse_stream_line(line: bytes) -> StreamEvent | None:
         ]
         text = "".join(parts)
         if text:
-            return StreamEvent(type="text_delta", text=text)
+            return "assistant_full", StreamEvent(type="text_delta", text=text)
         return None
+
     if kind == "result":
-        return StreamEvent(type="message_done")
+        return "done", StreamEvent(type="message_done")
+
     return None
 
 
@@ -157,6 +186,7 @@ async def send_message(
     loop = asyncio.get_event_loop()
     deadline = loop.time() + timeout_s
     timed_out = False
+    saw_delta = False
 
     try:
         while True:
@@ -171,8 +201,20 @@ async def send_message(
                 break
             if not line:
                 break  # EOF
-            ev = _parse_stream_line(line)
-            if ev is not None:
+            parsed = _parse_stream_line(line)
+            if parsed is None:
+                continue
+            kind, ev = parsed
+            if kind == "delta":
+                saw_delta = True
+                yield ev
+            elif kind == "assistant_full":
+                # Only surface the summary when the CLI didn't already give
+                # us incremental fragments — otherwise clients would see the
+                # full reply twice.
+                if not saw_delta:
+                    yield ev
+            else:  # "done"
                 yield ev
 
         if timed_out:
