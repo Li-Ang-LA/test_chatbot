@@ -14,13 +14,9 @@ import {
   PanelLeftOpen,
   SquarePen,
 } from 'lucide-react';
-import {
-  createSession,
-  deleteSession,
-  listSessions,
-  updateSession,
-} from '../sessions/api';
+import { createSession, deleteSession, updateSession } from '../sessions/api';
 import type { ChatSession } from '../sessions/api';
+import { useSessions } from '../sessions/sessionsContext';
 import { useAuth } from '../auth/useAuth';
 
 const COLLAPSED_KEY = 'sidebar:collapsed';
@@ -35,21 +31,13 @@ export function Sidebar() {
   const { sessionId: activeIdParam } = useParams();
   const activeId = activeIdParam ? Number(activeIdParam) : null;
 
+  const { sessions, setSessions } = useSessions();
   const [collapsed, setCollapsed] = useState<boolean>(() => readCollapsed());
-  const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [menuOpenFor, setMenuOpenFor] = useState<number | null>(null);
   const [renamingId, setRenamingId] = useState<number | null>(null);
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<number | null>(
     null,
   );
-
-  useEffect(() => {
-    listSessions()
-      .then(setSessions)
-      .catch(() => {
-        // Silently ignore for now; global error handling lands in M6.
-      });
-  }, []);
 
   useEffect(() => {
     window.localStorage.setItem(COLLAPSED_KEY, collapsed ? '1' : '0');
@@ -91,23 +79,26 @@ export function Sidebar() {
     } catch (err) {
       console.error('Failed to create session', err);
     }
-  }, [navigate]);
+  }, [navigate, setSessions]);
 
-  const handleRename = useCallback(async (id: number, nextTitle: string) => {
-    const trimmed = nextTitle.trim();
-    if (!trimmed) {
-      setRenamingId(null);
-      return;
-    }
-    try {
-      const updated = await updateSession(id, { title: trimmed });
-      setSessions((prev) => prev.map((s) => (s.id === id ? updated : s)));
-    } catch (err) {
-      console.error('Failed to rename session', err);
-    } finally {
-      setRenamingId(null);
-    }
-  }, []);
+  const handleRename = useCallback(
+    async (id: number, nextTitle: string) => {
+      const trimmed = nextTitle.trim();
+      if (!trimmed) {
+        setRenamingId(null);
+        return;
+      }
+      try {
+        const updated = await updateSession(id, { title: trimmed });
+        setSessions((prev) => prev.map((s) => (s.id === id ? updated : s)));
+      } catch (err) {
+        console.error('Failed to rename session', err);
+      } finally {
+        setRenamingId(null);
+      }
+    },
+    [setSessions],
+  );
 
   const handleConfirmDelete = useCallback(
     async (id: number) => {
@@ -121,7 +112,7 @@ export function Sidebar() {
         setConfirmingDeleteId(null);
       }
     },
-    [activeId, navigate],
+    [activeId, navigate, setSessions],
   );
 
   if (collapsed) {

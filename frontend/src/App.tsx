@@ -8,6 +8,7 @@ import {
   ChatSessionPlaceholder,
   EmptyHomePlaceholder,
 } from './shell/AppShell';
+import { SessionsProvider } from './sessions/SessionsProvider';
 
 function App() {
   return (
@@ -19,7 +20,9 @@ function App() {
           <Route
             element={
               <RequireAuth>
-                <AppShell />
+                <SessionsProvider>
+                  <AppShell />
+                </SessionsProvider>
               </RequireAuth>
             }
           >

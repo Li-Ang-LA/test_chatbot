@@ -9,6 +9,7 @@ import {
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { SessionChat } from './SessionChat';
+import { SessionsProvider } from '../sessions/SessionsProvider';
 
 type FetchArgs = Parameters<typeof fetch>;
 type PersistedMsg = {
@@ -90,7 +91,11 @@ function mountFetch(sessions: Record<number, SessionFixture>) {
 }
 
 function Host({ sessionId }: { sessionId: number }) {
-  return <SessionChat key={sessionId} sessionId={sessionId} />;
+  return (
+    <SessionsProvider>
+      <SessionChat key={sessionId} sessionId={sessionId} />
+    </SessionsProvider>
+  );
 }
 
 beforeEach(() => {
