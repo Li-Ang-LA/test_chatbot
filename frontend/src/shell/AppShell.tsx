@@ -1,5 +1,6 @@
-import { Outlet, useParams } from 'react-router-dom';
+import { Outlet } from 'react-router-dom';
 import { Sidebar } from '../sidebar/Sidebar';
+import { EmptyChatView } from '../chat/EmptyChatView';
 
 export function AppShell() {
   return (
@@ -24,14 +25,8 @@ export function EmptyHomePlaceholder() {
 }
 
 export function ChatSessionPlaceholder() {
-  const { sessionId } = useParams();
-  return (
-    <div
-      data-state="session-selected"
-      data-session-id={sessionId}
-      className="flex flex-1 items-center justify-center text-neutral-500"
-    >
-      <p>Session {sessionId}</p>
-    </div>
-  );
+  // M3.4 (issue #13) will introduce the active-chat layout and the
+  // empty-to-active transition driven by message state. Until then, freshly
+  // opened sessions render the centered empty-state hero.
+  return <EmptyChatView />;
 }
