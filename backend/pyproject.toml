@@ -18,6 +18,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0",
+    "pytest-asyncio>=0.24",
     "httpx>=0.28",
     "black>=25.1",
     "ruff>=0.11",
@@ -41,6 +42,7 @@ line-length = 88
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+asyncio_mode = "auto"
 filterwarnings = [
     # Dev/test SECRET_KEY is intentionally short; production config uses a
     # proper secret. Silencing keeps the test log readable.
