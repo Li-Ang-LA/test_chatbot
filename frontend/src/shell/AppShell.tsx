@@ -1,6 +1,8 @@
-import { Outlet } from 'react-router-dom';
+import { useState } from 'react';
+import { Outlet, useParams } from 'react-router-dom';
 import { Sidebar } from '../sidebar/Sidebar';
-import { EmptyChatView } from '../chat/EmptyChatView';
+import { ChatView } from '../chat/ChatView';
+import type { ChatMessage } from '../chat/types';
 
 export function AppShell() {
   return (
@@ -25,8 +27,15 @@ export function EmptyHomePlaceholder() {
 }
 
 export function ChatSessionPlaceholder() {
-  // M3.4 (issue #13) will introduce the active-chat layout and the
-  // empty-to-active transition driven by message state. Until then, freshly
-  // opened sessions render the centered empty-state hero.
-  return <EmptyChatView />;
+  const { sessionId } = useParams<{ sessionId: string }>();
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+
+  function handleSubmit(content: string) {
+    setMessages((prev) => [
+      ...prev,
+      { id: `${sessionId ?? 'local'}-${prev.length}`, role: 'user', content },
+    ]);
+  }
+
+  return <ChatView messages={messages} onSubmit={handleSubmit} />;
 }
