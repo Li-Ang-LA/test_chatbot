@@ -54,6 +54,21 @@ function mountFetch(sessions: Record<number, SessionFixture>) {
       );
     }
 
+    const streamMatch = url.match(/\/sessions\/(\d+)\/messages\/stream$/);
+    if (streamMatch && method === 'GET') {
+      // No active turn in these tests — close the SSE immediately so the
+      // hook just falls through to the persisted-history state.
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.close();
+        },
+      });
+      return new Response(body, {
+        status: 200,
+        headers: { 'Content-Type': 'text/event-stream' },
+      });
+    }
+
     const postMatch = url.match(/\/sessions\/(\d+)\/messages$/);
     if (postMatch && method === 'POST') {
       const id = Number(postMatch[1]);
