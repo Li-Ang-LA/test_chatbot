@@ -14,7 +14,9 @@ See [`plan.md`](./plan.md) for the milestone-based development plan.
 - **Node** ≥ 20
 - **Python** ≥ 3.12
 - An active **Claude Code CLI** login on this machine (only needed once chat
-  functionality lands in M3; not required for the M1/M2 flows).
+  functionality lands in M3; not required for the M1/M2 flows). Run
+  `claude login` once. The backend spawns the `claude` binary from your `PATH`;
+  set `CLAUDE_CLI_BIN` to override if it lives elsewhere.
 
 ---
 
@@ -122,6 +124,19 @@ Useful flags:
 make lint     # ruff + eslint
 make format   # black + ruff --fix, prettier
 ```
+
+---
+
+## Manual smoke: Claude Code runner
+
+```bash
+cd backend
+.venv/bin/python -m app.claude_runner "say hello in one word"
+```
+
+Streams the assistant's reply to stdout. Requires an active `claude login` on
+this machine; this is the only path that hits the real CLI (unit tests mock
+the subprocess).
 
 ---
 
