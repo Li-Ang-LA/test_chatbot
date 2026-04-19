@@ -96,7 +96,10 @@ describe('AppShell', () => {
     await waitFor(() =>
       expect(screen.getByTestId('route-path')).toHaveTextContent('/c/11'),
     );
-    expect(screen.getByText(/^Session 11$/)).toBeInTheDocument();
+    // Session view shows the empty-state hero until a message is sent (M3.4).
+    expect(
+      screen.getByRole('region', { name: /start a new chat/i }),
+    ).toHaveAttribute('data-state', 'empty');
   });
 
   it('logout clears auth and redirects to /login', async () => {
