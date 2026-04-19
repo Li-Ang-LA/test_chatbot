@@ -65,6 +65,9 @@ def _build_send_argv(claude_session_id: str, prompt: str) -> list[str]:
         "--output-format",
         "stream-json",
         "--verbose",
+        # Required for the CLI to emit stream_event / content_block_delta
+        # records; without it we only get a single terminal assistant block.
+        "--include-partial-messages",
     ]
 
 

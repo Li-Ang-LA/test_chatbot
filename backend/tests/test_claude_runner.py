@@ -44,6 +44,7 @@ def test_send_argv_passes_prompt_and_resume():
         "--output-format",
         "stream-json",
         "--verbose",
+        "--include-partial-messages",
     ]
 
 
