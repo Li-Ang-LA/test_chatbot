@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import auth as auth_routes
+from app.api.routes import search as search_routes
 from app.api.routes import sessions as sessions_routes
 from app.config import settings
 
@@ -17,6 +18,7 @@ app.add_middleware(
 
 app.include_router(auth_routes.router)
 app.include_router(sessions_routes.router)
+app.include_router(search_routes.router)
 
 
 @app.get("/health")
